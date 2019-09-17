@@ -11,3 +11,22 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
     monospace;
 }
+
+.minesweeper-row {
+  display: flex;
+  justify-content: center;
+}
+
+.minesweeper-cell {
+  background: lightgrey;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border: 1px solid black
+}
+
+.minesweeper-cell--revealed {
+  background: none;
+  border: 1px dotted black;
+
+}
