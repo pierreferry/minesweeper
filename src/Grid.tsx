@@ -39,6 +39,7 @@ function Grid({ size, mineCount }: GridProps) {
                 handleRightClick={e => {
                   e.preventDefault();
                   handleRightClick(x, y);
+                  return false;
                 }}
               />
             ))}
