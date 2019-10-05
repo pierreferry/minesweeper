@@ -4,7 +4,6 @@ import { DebugContext } from "./App";
 
 export interface Cell {
   value: number;
-  key: number;
   isBomb: boolean;
   isFlagged: boolean;
   isRevealed: boolean;
@@ -19,9 +18,6 @@ export default function Cell({ cell, handleClick }: CellProps) {
   const { isDebug } = useContext(DebugContext);
 
   function cellContent() {
-    if (!cell.isRevealed && !isDebug) {
-      return null;
-    }
     return cell.isBomb ? "X" : cell.value || " ";
   }
 
@@ -32,7 +28,7 @@ export default function Cell({ cell, handleClick }: CellProps) {
         "minesweeper-cell--revealed": cell.isRevealed
       })}
     >
-      {cellContent()}
+      {(cell.isRevealed || isDebug) && cellContent()}
     </div>
   );
 }

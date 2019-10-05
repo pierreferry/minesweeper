@@ -1,4 +1,5 @@
 import React, { memo, useState } from "react";
+import * as R from "ramda";
 import CellElement, { Cell } from "./Cell";
 import { List } from "immutable";
 
@@ -14,120 +15,144 @@ function Grid({ size, mineCount }: GridProps) {
 
   function handleClick(x: number, y: number) {
     // Reveal cell => isreveald;
-    let newGrid = revealCell(grid, x, y);
-    // Game lost ? win ?
-    // revealOtherCells
-
-    if (grid.getIn([y, x, "value"]) === 0) {
-      newGrid = revealCellAndSurroundings(grid, x, y);
-    }
+    const newGrid = revealCells(x, y, grid);
     setGrid(newGrid);
+
+    // Game lost ? win ?
   }
 
   return (
     <div>
-      {grid.map((row, y) => {
-        return (
-          <div className="minesweeper-row" key={y}>
-            {row.map((cell, x) => (
-              <CellElement
-                key={cell.key}
-                cell={cell}
-                handleClick={() => handleClick(x, y)}
-              />
-            ))}
-          </div>
-        );
-      })}
+      {grid.map((row, y) => (
+        <div className="minesweeper-row" key={y}>
+          {row.map((cell, x) => (
+            <CellElement
+              key={x}
+              cell={cell}
+              handleClick={() => handleClick(x, y)}
+            />
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
 
-function makeGrid(size: number, mineCount: number) {
+function makeGrid(size: number, mineCount: number): List<List<Cell>> {
   function addBombs(grid: Grid) {
     const x = Math.floor(Math.random() * size);
     const y = Math.floor(Math.random() * size);
 
-    if (!grid.getIn([y, x, "isBomb"])) {
-      grid = grid.setIn([y, x, "isBomb"], true);
-      grid = incrementSurroundingCells(grid, x, y);
-    } else {
-      grid = addBombs(grid);
-    }
-
-    return grid;
+    return R.ifElse(
+      isNotBomb(x, y),
+      R.pipe(
+        setBomb(x, y),
+        incrementSurroundingCells(x, y)
+      ),
+      addBombs
+    )(grid);
   }
+  let grid = List(R.repeat(makeRow(size), size));
 
-  let grid = List(
-    Array(size)
-      .fill(null)
-      .map(() =>
-        List(
-          Array(size)
-            .fill(null)
-            .map(makeCells)
-        )
-      )
-  );
-
-  for (let i = 0; i < mineCount; i++) {
-    grid = addBombs(grid);
-  }
+  grid = R.reduce(addBombs, grid, R.range(0, mineCount));
 
   return grid;
 }
 
-function makeCells(_: any, index: number): Cell {
-  return { value: 0, key: index, isBomb: false, isRevealed: false, isFlagged: false };
+function makeRow(size: number): List<Cell> {
+  return List(R.repeat(makeCell(), size));
 }
 
-function incrementIfExists(grid: Grid, x: number, y: number) {
-  if (x < 0 || y < 0) {
-    // grid.get(-1) with return the last element of array
-    return grid;
-  }
-  const cell = grid.getIn([y, x]);
+function makeCell(): Cell {
+  return {
+    value: 0,
+    isBomb: false,
+    isRevealed: false,
+    isFlagged: false
+  };
+}
 
-  if (cell) {
+const isNotBomb = R.curry(
+  (x: number, y: number, grid: Grid): boolean => !grid.getIn([y, x, "isBomb"])
+);
+
+const setBomb = R.curry(
+  (x: number, y: number, grid: Grid): Grid => grid.setIn([y, x, "isBomb"], true)
+);
+
+const incrementValue = R.curry(
+  (x: number, y: number, grid: Grid): Grid => {
+    const cell = grid.getIn([y, x]);
+
     return grid.setIn([y, x, "value"], cell.value + 1);
   }
-  return grid;
-}
+);
 
-function incrementSurroundingCells(grid: Grid, x: number, y: number): Grid {
-  const shifts = [-1, 0, 1];
+const incrementSurroundingCells = R.curry(
+  (x: number, y: number, grid: Grid): Grid => {
+    const shifts = [-1, 0, 1];
 
-  shifts.forEach(xShift => {
-    shifts.forEach(yShift => {
-      grid = incrementIfExists(grid, x + xShift, y + yShift);
+    shifts.forEach(xShift => {
+      shifts.forEach(yShift => {
+        const nx = x + xShift;
+        const ny = y + yShift;
+
+        grid = R.when(cellExists(nx, ny), incrementValue(nx, ny), grid);
+      });
     });
-  });
 
-  return grid;
-}
+    return grid;
+  }
+);
 
-function revealCell(grid: Grid, x: number, y: number) {
-  return grid.setIn([y, x, "isRevealed"], true);
-}
+// List.get(-1) returns last element of List.
+const cellExists = R.curry(
+  (x: number, y: number, grid: Grid): boolean =>
+    x >= 0 && y >= 0 && Boolean(grid.getIn([y, x]))
+);
 
-function revealCellAndSurroundings(grid: Grid, x: number, y: number): Grid {
-  const shifts = [-1, 0, 1];
+const isNotRevealed = R.curry(
+  (x: number, y: number, grid: Grid): boolean =>
+    grid.getIn([y, x, "isRevealed"]) === false
+);
 
-  shifts.forEach(xShift => {
-    shifts.forEach(yShift => {
-      const cell = grid.getIn([y + yShift, x + xShift]);
+const isValueZero = R.curry(
+  (x: number, y: number, grid: Grid): boolean =>
+    grid.getIn([y, x, "value"]) === 0
+);
 
-      if (cell && !cell.isRevealed) {
-        grid = revealCell(grid, x + xShift, y + yShift);
+const revealCell = R.curry(
+  (x: number, y: number, grid: Grid): Grid =>
+    grid.setIn([y, x, "isRevealed"], true)
+);
 
-        if (cell.value === 0) {
-          grid = revealCellAndSurroundings(grid, x + xShift, y + yShift);
-        }
-      }
+const revealSurroundings = R.curry(
+  (x: number, y: number, grid: Grid): Grid => {
+    const shifts = [-1, 0, 1];
+
+    shifts.forEach(xShift => {
+      shifts.forEach(yShift => {
+        const nx = x + xShift;
+        const ny = y + yShift;
+
+        grid = R.when(cellExists(nx, ny), revealCells(nx, ny))(grid);
+      });
     });
-  });
 
-  return grid;
-}
+    return grid;
+  }
+);
+
+const revealCells = R.curry(
+  (x: number, y: number, grid: Grid): Grid =>
+    R.when(
+      isNotRevealed(x, y),
+      R.pipe(
+        revealCell(x, y),
+        R.when(isValueZero(x, y), revealSurroundings(x, y))
+      ),
+      grid
+    )
+);
 
 export default memo(Grid);
