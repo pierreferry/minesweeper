@@ -1,7 +1,8 @@
-import React, { memo, useState } from "react";
+import React, { memo, useContext, useEffect, useState } from "react";
 import * as R from "ramda";
 import CellElement, { Cell } from "./Cell";
 import { List } from "immutable";
+import { GameContext, GameStatus } from "./App";
 
 interface GridProps {
   size: number;
@@ -12,17 +13,26 @@ export type Grid = List<List<Cell>>;
 
 function Grid({ size, mineCount }: GridProps) {
   const [grid, setGrid] = useState(makeGrid(size, mineCount));
+  const { isGameOver, setGameContext } = useContext(GameContext);
+
+  useEffect(() => {
+    setGameContext(gameStatus(grid));
+  }, [grid, setGameContext]);
 
   function handleClick(x: number, y: number) {
-    // Reveal cell => isreveald;
-    const newGrid = revealCells(x, y, grid);
-    setGrid(newGrid);
+    if (!isGameOver) {
+      setGrid(revealCells(x, y, grid));
+    }
+  }
 
-    // Game lost ? win ?
+  function handleRightClick(x: number, y: number) {
+    if (!isGameOver) {
+      setGrid(flagCell(x, y, grid));
+    }
   }
 
   return (
-    <div>
+    <div className="minesweeper-grid">
       {grid.map((row, y) => (
         <div className="minesweeper-row" key={y}>
           {row.map((cell, x) => (
@@ -30,6 +40,10 @@ function Grid({ size, mineCount }: GridProps) {
               key={x}
               cell={cell}
               handleClick={() => handleClick(x, y)}
+              handleRightClick={e => {
+                e.preventDefault();
+                handleRightClick(x, y);
+              }}
             />
           ))}
         </div>
@@ -135,7 +149,7 @@ const revealSurroundings = R.curry(
         const nx = x + xShift;
         const ny = y + yShift;
 
-        grid = R.when(cellExists(nx, ny), revealCells(nx, ny))(grid);
+        grid = R.when(cellExists(nx, ny), revealCells(nx, ny), grid);
       });
     });
 
@@ -154,5 +168,43 @@ const revealCells = R.curry(
       grid
     )
 );
+
+const toggleFlag = R.curry((x: number, y: number, grid: Grid) => {
+  const cell = grid.getIn([y, x]);
+  return grid.setIn([y, x, "isFlagged"], !cell.isFlagged);
+});
+
+const flagCell = R.curry((x: number, y: number, grid: Grid) =>
+  R.when(isNotRevealed(x, y), toggleFlag(x, y), grid)
+);
+
+const gameStatus = (grid: Grid): GameStatus => {
+  const size = grid.count();
+  let gameStatus = {
+    isGameOver: true,
+    isGameWon: true
+  };
+
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const cell = grid.getIn([y, x]);
+      const { isRevealed, isFlagged, isBomb } = cell;
+
+      if (isRevealed && isBomb) {
+        return { isGameOver: true, isGameWon: false };
+      }
+
+      if (!isRevealed && !isFlagged) {
+        gameStatus = R.assoc("isGameOver", false)(gameStatus);
+      }
+
+      if (isFlagged && !isBomb) {
+        gameStatus = R.assoc("isGameWon", false)(gameStatus);
+      }
+    }
+  }
+
+  return gameStatus;
+};
 
 export default memo(Grid);
